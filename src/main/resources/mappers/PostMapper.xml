@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.practice.react.post.mapper.PostMapper">
+
+    <!-- 목록과 상세 조회에서 공통으로 사용할 컬럼이다. 작성자 이름과 카테고리 이름은 JOIN으로 가져온다. -->
+    <sql id="postColumns">
+        p.post_id, p.category_id, pc.category, p.member_id, m.name AS author_name,
+        p.title, p.content, p.views, p.created_at, p.updated_at
+    </sql>
+
+    <!-- 목록 개수/목록 조회에 공통으로 붙는 카테고리 및 제목·내용 검색 조건이다. 입력값이 없으면 조건을 추가하지 않는다. -->
+    <sql id="postSearchWhere">
+        <if test="categoryId != null">
+            AND p.category_id = #{categoryId}
+        </if>
+        <if test="keyword != null and keyword.trim() != ''">
+            <choose>
+                <when test="searchType == 'TITLE'">
+                    AND LOWER(p.title) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                </when>
+                <when test="searchType == 'CONTENT'">
+                    AND LOWER(p.content) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                </when>
+                <otherwise>
+                    AND (LOWER(p.title) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                    OR LOWER(p.content) LIKE CONCAT('%', LOWER(#{keyword}), '%'))
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <!-- SQL 결과의 snake_case 컬럼과 별칭을 Post 객체의 camelCase 필드에 연결한다. -->
+    <resultMap id="postResultMap" type="com.practice.react.post.domain.Post">
+        <id property="postId" column="post_id"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="category" column="category"/>
+        <result property="memberId" column="member_id"/>
+        <result property="authorName" column="author_name"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="views" column="views"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!--
+        삭제되지 않은 게시글을 페이지 단위로 조회한다.
+        sortType으로 최신순·오래된순·조회수순을 고르고,
+        Service가 계산한 size와 offset으로 필요한 행만 가져온다.
+    -->
+    <select id="findPage" resultMap="postResultMap">
+        SELECT <include refid="postColumns"/>
+        FROM post p
+        JOIN `member` m ON m.member_id = p.member_id
+        JOIN post_category pc ON pc.category_id = p.category_id
+        WHERE p.deleted_at IS NULL
+        <include refid="postSearchWhere"/>
+        <choose>
+            <when test="sortType == 'OLDEST'">ORDER BY p.post_id ASC</when>
+            <when test="sortType == 'VIEWS'">ORDER BY p.views DESC, p.post_id DESC</when>
+            <otherwise>ORDER BY p.post_id DESC</otherwise>
+        </choose>
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!-- 현재 필터·검색 조건에 맞는 전체 게시글 수다. Service가 전체 페이지 수를 계산할 때 사용한다. -->
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM post p
+        WHERE p.deleted_at IS NULL
+        <include refid="postSearchWhere"/>
+    </select>
+
+    <!-- 게시글 번호로 삭제되지 않은 글 한 건을 조회하고, 작성자·카테고리 정보도 함께 가져온다. -->
+    <select id="findById" resultMap="postResultMap">
+        SELECT <include refid="postColumns"/>
+        FROM post p
+        JOIN `member` m ON m.member_id = p.member_id
+        JOIN post_category pc ON pc.category_id = p.category_id
+        WHERE p.post_id = #{postId}
+          AND p.deleted_at IS NULL
+    </select>
+
+    <!-- 게시글 작성 기능에서 사용할 INSERT다. 현재는 연습용으로 Controller와 Service 구현을 비워 둔 상태다. -->
+    <insert id="insert" parameterType="com.practice.react.post.domain.Post"
+            useGeneratedKeys="true" keyProperty="postId">
+        INSERT INTO post (category_id, member_id, title, content)
+        VALUES (#{categoryId}, #{memberId}, #{title}, #{content})
+    </insert>
+
+    <!-- 상세 화면을 조회할 때 조회수를 1 올린다. 수정 화면용 조회에서는 이 SQL을 실행하지 않는다. -->
+    <update id="incrementViews">
+        UPDATE post
+        SET views = views + 1
+        WHERE post_id = #{postId}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 작성자 번호가 일치할 때만 카테고리·제목·내용을 수정한다. 다른 회원의 글이면 수정 행 수는 0이다. -->
+    <update id="update" parameterType="com.practice.react.post.domain.Post">
+        UPDATE post
+        SET category_id = #{categoryId},
+            title = #{title},
+            content = #{content},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE post_id = #{postId}
+          AND member_id = #{memberId}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 작성자 번호가 일치할 때만 deleted_at을 기록하는 논리 삭제를 수행한다. -->
+    <update id="delete">
+        UPDATE post
+        SET deleted_at = CURRENT_TIMESTAMP
+        WHERE post_id = #{postId}
+          AND member_id = #{memberId}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 카테고리 번호가 실제로 존재하는지 확인한다. 0이면 Service가 잘못된 카테고리 요청으로 처리한다. -->
+    <select id="countCategoryById" resultType="int">
+        SELECT COUNT(*)
+        FROM post_category
+        WHERE category_id = #{categoryId}
+    </select>
+</mapper>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.practice.react.member.mapper.MemberMapper">
+
+    <!-- member 테이블의 snake_case 컬럼을 Member 객체의 camelCase 필드에 연결한다. -->
+    <resultMap id="memberResultMap" type="com.practice.react.member.domain.Member">
+        <id property="memberId" column="member_id"/>
+        <result property="email" column="email"/>
+        <result property="password" column="password"/>
+        <result property="name" column="name"/>
+        <result property="age" column="age"/>
+        <result property="profileId" column="profile_id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 회원 번호로 탈퇴하지 않은 회원 한 명을 조회한다. 세션 정보를 최신 회원 정보로 확인할 때 사용한다. -->
+    <select id="findActiveById" resultMap="memberResultMap">
+        SELECT member_id, email, password, name, age, profile_id, created_at
+        FROM `member`
+        WHERE member_id = #{memberId}
+          AND deleted_at IS NULL
+    </select>
+
+    <!-- 이메일로 탈퇴하지 않은 회원 한 명을 조회한다. 로그인 구현에서 암호를 검증할 회원을 찾을 때 사용할 수 있다. -->
+    <select id="findActiveByEmail" resultMap="memberResultMap">
+        SELECT member_id, email, password, name, age, profile_id, created_at
+        FROM `member`
+        WHERE email = #{email}
+          AND deleted_at IS NULL
+    </select>
+
+    <!-- 가입하려는 이메일과 같은 활성 회원 수를 조회한다. 결과가 0보다 크면 중복 이메일이다. -->
+    <select id="countActiveByEmail" resultType="int">
+        SELECT COUNT(*)
+        FROM `member`
+        WHERE email = #{email}
+          AND deleted_at IS NULL
+    </select>
+
+    <!-- 회원가입 시 입력 정보를 저장한다. member_id와 생성 시각은 DB가 자동으로 생성한다. -->
+    <insert id="insert" parameterType="com.practice.react.member.domain.Member"
+            useGeneratedKeys="true" keyProperty="memberId">
+        INSERT INTO `member` (email, password, name, age, profile_id)
+        VALUES (#{email}, #{password}, #{name}, #{age}, #{profileId})
+    </insert>
+
+    <!-- 본인 정보 수정 시 이름·나이·프로필·암호를 변경한다. 탈퇴한 회원은 수정하지 않는다. -->
+    <update id="update" parameterType="com.practice.react.member.domain.Member">
+        UPDATE `member`
+        SET name = #{name},
+            age = #{age},
+            profile_id = #{profileId},
+            password = #{password},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE member_id = #{memberId}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 실제 행을 지우지 않는 논리 삭제이다. 이메일을 익명화하고 deleted_at에 탈퇴 시각을 기록한다. -->
+    <update id="withdraw">
+        UPDATE `member`
+        SET email = CONCAT('withdrawn-', member_id, '-', UNIX_TIMESTAMP(), '@deleted.local'),
+            deleted_at = CURRENT_TIMESTAMP
+        WHERE member_id = #{memberId}
+          AND deleted_at IS NULL
+    </update>
+</mapper>
