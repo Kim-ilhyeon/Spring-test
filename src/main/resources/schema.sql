@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS post_category (
     category VARCHAR(30) NOT NULL UNIQUE
 );
 
+INSERT INTO post_category (category_id, category)
+    VALUES ('qna', 'solution');
+
 CREATE TABLE IF NOT EXISTS post (
     post_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     category_id SMALLINT NOT NULL,
